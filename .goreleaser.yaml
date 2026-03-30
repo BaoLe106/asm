@@ -1,0 +1,49 @@
+project_name: asm
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: asm
+    main: ./cmd/asm
+    binary: asm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    builds:
+      - asm
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+brews:
+  - name: asm
+    repository:
+      owner: YOUR_GH_ORG
+      name: homebrew-tap
+    homepage: https://github.com/YOUR_GH_ORG/asm
+    description: AI Agent Skills Manager CLI
+    license: MIT
+    install: |
+      bin.install "asm"
+
+release:
+  github:
+    owner: YOUR_GH_ORG
+    name: asm
