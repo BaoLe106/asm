@@ -22,6 +22,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.repoRoot, "repo", wd, "Repository root")
 	cmd.AddCommand(newApplyCmd(opts))
 	cmd.AddCommand(newListCmd(opts))
+	cmd.AddCommand(newStatusCmd(opts))
 	cmd.AddCommand(newPublishCmd(opts))
 	cmd.AddCommand(newUpdateCmd(opts))
 	cmd.AddCommand(newDeleteVersionCmd(opts))

@@ -10,6 +10,7 @@ import (
 
 func newListCmd(opts *rootOptions) *cobra.Command {
 	var agent string
+	var skill string
 	var skillset string
 	var listSkill bool
 	var listVersion bool
@@ -64,6 +65,36 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 					fmt.Printf("version=%d snapshot=%s created=%s note=%s\n", relative, v.SnapshotID, time.Unix(v.CreatedAt, 0).Format(time.RFC3339), v.Note)
 				}
 				return nil
+			case agent == "__ALL__":
+				items, err := svc.ListAgents()
+				if err != nil {
+					return err
+				}
+				for _, it := range items {
+					fmt.Println(it)
+				}
+				return nil
+			case skill == "__ALL__":
+				if agent == "" {
+					return fmt.Errorf("--skill with --agent requires an agent name")
+				}
+				items, err := svc.ListSkillsByAgent(agent)
+				if err != nil {
+					return err
+				}
+				for _, it := range items {
+					fmt.Println(it)
+				}
+				return nil
+			case skillset == "__ALL__":
+				items, err := svc.ListSkillsets()
+				if err != nil {
+					return err
+				}
+				for _, it := range items {
+					fmt.Println(it)
+				}
+				return nil
 			default:
 				if cmd.Flags().Changed("skillset") {
 					if agent != "" {
@@ -95,9 +126,15 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&agent, "agent", "", "Agent name")
+	cmd.Flags().Lookup("agent").NoOptDefVal = "__ALL__"
+
 	cmd.Flags().BoolVar(&listSkill, "skill", false, "List skills for the given agent")
+	cmd.Flags().Lookup("skill").NoOptDefVal = "__ALL__"
+
 	cmd.Flags().StringVar(&skillset, "skillset", "", "List skillsets, or provide a skillset name with --version")
 	cmd.Flags().Lookup("skillset").NoOptDefVal = "__ALL__"
+	
 	cmd.Flags().BoolVar(&listVersion, "version", false, "List versions for the given target")
+	// cmd.Flags().Lookup("version").NoOptDefVal = "__ALL__"
 	return cmd
 }
