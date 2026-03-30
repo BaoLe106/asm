@@ -33,7 +33,9 @@ func (s *StateStore) Get() (domain.CurrentState, error) {
 }
 
 func (s *StateStore) Save(st domain.CurrentState) error {
-	if err := os.MkdirAll(s.layout.StateRoot(), 0o755); err != nil {
+	
+	// if err := os.MkdirAll(s.layout.StateRoot(), 0o755); err != nil {
+	if err := util.CreateHiddenFolder(s.layout.StateRoot()); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(st, "", "  ")

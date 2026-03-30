@@ -4,7 +4,36 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+
+	"golang.org/x/sys/windows"
 )
+
+func CreateHiddenFolder(folderPath string) error {
+    err := os.MkdirAll(folderPath, 0o755)
+    if err != nil {
+        return err
+    }
+
+    // Windows only
+    if runtime.GOOS == "windows" {
+		ptr, err := windows.UTF16PtrFromString(folderPath)
+		if err != nil {
+			return err
+		}
+
+		attrs, err := windows.GetFileAttributes(ptr)
+		if err != nil {
+			return err
+		}
+
+		// Add BOTH hidden + system
+		attrs |= windows.FILE_ATTRIBUTE_HIDDEN | windows.FILE_ATTRIBUTE_SYSTEM
+        windows.SetFileAttributes(ptr, attrs)
+    }
+
+    return nil
+}
 
 func EnsureDir(path string) error {
 	return os.MkdirAll(path, 0o755)
