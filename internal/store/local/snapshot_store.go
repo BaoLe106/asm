@@ -18,6 +18,12 @@ type SnapshotStore struct {
 	objects *ObjectStore
 }
 
+type persistentFile struct {
+	relPath string
+	mode    os.FileMode
+	data    []byte
+}
+
 func NewSnapshotStore(layout Layout, objects *ObjectStore) *SnapshotStore {
 	return &SnapshotStore{layout: layout, objects: objects}
 }
@@ -34,14 +40,23 @@ func (s *SnapshotStore) CreateFromAgentDir(agentName string, sourceKind domain.S
 		if walkErr != nil {
 			return walkErr
 		}
-		if d.IsDir() {
-			return nil
-		}
+
 		rel, err := filepath.Rel(agentDir, path)
 		if err != nil {
 			return err
 		}
 		rel = util.ToSlash(rel)
+
+		if agentName == "github" && isGitHubWorkflowsPath(rel) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			return nil
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -129,10 +144,21 @@ func (s *SnapshotStore) ListSkills(snap domain.Snapshot) []string {
 
 func (s *SnapshotStore) RestoreToAgentDir(snap domain.Snapshot, selectedSkills map[string]bool) error {
 	agentDir := filepath.Join(s.layout.RepoRoot, "."+snap.AgentName)
+	var persistedWorkflowFiles []persistentFile
+	if snap.AgentName == "github" {
+		capturedFiles, err := capturePersistentWorkflows(agentDir)
+		if err != nil {
+			return err
+		}
+		persistedWorkflowFiles = capturedFiles
+	}
 	if err := util.RemoveAndCreateDir(agentDir); err != nil {
 		return err
 	}
 	for _, e := range snap.Entries {
+		if snap.AgentName == "github" && isGitHubWorkflowsPath(e.Path) {
+			continue
+		}
 		if strings.HasPrefix(e.Path, "skills/") && len(selectedSkills) > 0 {
 			parts := strings.Split(e.Path, "/")
 			if len(parts) >= 2 {
@@ -153,5 +179,84 @@ func (s *SnapshotStore) RestoreToAgentDir(snap domain.Snapshot, selectedSkills m
 			return err
 		}
 	}
+	if snap.AgentName == "github" {
+		if err := restorePersistentWorkflows(agentDir, persistedWorkflowFiles); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isGitHubWorkflowsPath(relPath string) bool {
+	if relPath == "." || relPath == "" {
+		return false
+	}
+	p := util.ToSlash(relPath)
+	return p == "workflows" || strings.HasPrefix(p, "workflows/")
+}
+
+func capturePersistentWorkflows(agentDir string) ([]persistentFile, error) {
+	workflowsDir := filepath.Join(agentDir, "workflows")
+	info, err := os.Stat(workflowsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, nil
+	}
+
+	files := make([]persistentFile, 0)
+	err = filepath.WalkDir(workflowsDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		relPath, err := filepath.Rel(workflowsDir, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		fi, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		files = append(files, persistentFile{
+			relPath: relPath,
+			mode:    fi.Mode().Perm(),
+			data:    data,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+func restorePersistentWorkflows(agentDir string, files []persistentFile) error {
+	workflowsDir := filepath.Join(agentDir, "workflows")
+	if err := os.MkdirAll(workflowsDir, 0o755); err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		outPath := filepath.Join(workflowsDir, f.relPath)
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(outPath, f.data, f.mode); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
