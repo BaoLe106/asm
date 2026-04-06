@@ -12,8 +12,6 @@ import (
 	"github.com/BaoLe106/asm/internal/store/local"
 )
 
-type SkillSelector func(options []string) ([]string, error)
-
 type Service struct {
 	RepoRoot string
 	layout   local.Layout
@@ -38,7 +36,7 @@ func NewService(repoRoot string) *Service {
 	}
 }
 
-func (s *Service) DiscoverAgentFolders() ([]string, error) {
+func (s *Service) discoverAgentFolders() ([]string, error) {
 	entries, err := os.ReadDir(s.RepoRoot)
 	if err != nil {
 		return nil, err
@@ -49,10 +47,7 @@ func (s *Service) DiscoverAgentFolders() ([]string, error) {
 			continue
 		}
 		name := e.Name()
-		if !strings.HasPrefix(name, ".") {
-			continue
-		}
-		if name == ".asm" || name == ".git" {
+		if !strings.HasPrefix(name, ".") || name == ".asm" || name == ".git" {
 			continue
 		}
 		agent := strings.TrimPrefix(name, ".")
@@ -64,66 +59,59 @@ func (s *Service) DiscoverAgentFolders() ([]string, error) {
 	return out, nil
 }
 
-func (s *Service) AgentDirExists(agent string) bool {
-	info, err := os.Stat(filepath.Join(s.RepoRoot, "."+agent))
-	return err == nil && info.IsDir()
+func (s *Service) captureVersionManifest(name string, note string) (domain.VersionManifest, error) {
+	agents, err := s.discoverAgentFolders()
+	if err != nil {
+		return domain.VersionManifest{}, err
+	}
+	manifest := domain.VersionManifest{
+		Name:      name,
+		CreatedAt: time.Now().Unix(),
+		Note:      note,
+		Agents:    map[string]string{},
+	}
+	for _, agent := range agents {
+		snap, err := s.snaps.CreateFromAgentDir(agent, domain.SourceAgent, name, note)
+		if err != nil {
+			return domain.VersionManifest{}, err
+		}
+		manifest.Agents[agent] = snap.ID
+	}
+	return manifest, nil
 }
 
-func (s *Service) EnsureAgentSnapshot(agent string) error {
-	versions, err := s.refs.AgentVersions(agent)
+func (s *Service) readCurrentVersionName() (string, error) {
+	st, err := s.state.Get()
+	if err != nil {
+		return "", err
+	}
+	if st.CurrentVersion == "" {
+		return "", fmt.Errorf("no current version")
+	}
+	return st.CurrentVersion, nil
+}
+
+func (s *Service) setCurrentVersionName(version string) error {
+	st, err := s.state.Get()
 	if err != nil {
 		return err
 	}
-	if len(versions) > 0 {
-		return nil
-	}
-	if !s.AgentDirExists(agent) {
-		return fmt.Errorf("agent %q does not exist", agent)
-	}
-	snap, err := s.snaps.CreateFromAgentDir(agent, domain.SourceAgent, agent, "auto-initialized")
+	st.CurrentVersion = version
+	return s.state.Save(st)
+}
+
+func (s *Service) removeMissingAgents(keep map[string]string) error {
+	agents, err := s.discoverAgentFolders()
 	if err != nil {
 		return err
 	}
-	return s.refs.AppendAgentVersion(agent, domain.VersionRef{SnapshotID: snap.ID, CreatedAt: snap.CreatedAt, Note: "auto-initialized"})
-}
-
-func (s *Service) resolveAgentSnapshot(agent string, version int) (domain.Snapshot, string, error) {
-	if err := s.EnsureAgentSnapshot(agent); err != nil {
-		return domain.Snapshot{}, "", err
+	for _, agent := range agents {
+		if _, ok := keep[agent]; ok {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(s.RepoRoot, "."+agent)); err != nil {
+			return err
+		}
 	}
-	versions, err := s.refs.AgentVersions(agent)
-	if err != nil {
-		return domain.Snapshot{}, "", err
-	}
-	idx, err := domain.ResolveByRelativeIndex(len(versions), version)
-	if err != nil {
-		return domain.Snapshot{}, "", err
-	}
-	vr := versions[idx]
-	snap, err := s.snaps.Get(vr.SnapshotID)
-	if err != nil {
-		return domain.Snapshot{}, "", err
-	}
-	return snap, vr.SnapshotID, nil
-}
-
-func (s *Service) resolveSkillsetSnapshot(skillset string, version int) (domain.Snapshot, string, error) {
-	versions, err := s.refs.SkillsetVersions(skillset)
-	if err != nil {
-		return domain.Snapshot{}, "", err
-	}
-	idx, err := domain.ResolveByRelativeIndex(len(versions), version)
-	if err != nil {
-		return domain.Snapshot{}, "", fmt.Errorf("skillset %q not found or invalid version: %w", skillset, err)
-	}
-	vr := versions[idx]
-	snap, err := s.snaps.Get(vr.SnapshotID)
-	if err != nil {
-		return domain.Snapshot{}, "", err
-	}
-	return snap, vr.SnapshotID, nil
-}
-
-func nowNote(prefix string) string {
-	return fmt.Sprintf("%s at %s", prefix, time.Now().Format(time.RFC3339))
+	return nil
 }

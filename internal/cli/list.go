@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"time"
+	"sort"
 
 	"github.com/BaoLe106/asm/internal/app"
 	"github.com/spf13/cobra"
@@ -10,110 +10,28 @@ import (
 
 func newListCmd(opts *rootOptions) *cobra.Command {
 	var agent string
-	var skill string
-	var skillset string
-	var listSkill bool
 	var listVersion bool
+	var listAgent bool
+	var listSkill bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List agents, skills, skillsets, or versions",
+		Short: "List versions or current-version agents/skills",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := app.NewService(opts.repoRoot)
+
 			switch {
-			case listSkill:
-				if agent == "" {
-					return fmt.Errorf("--skill requires --agent <agent_name>")
-				}
-				items, err := svc.ListSkillsByAgent(agent)
-				if err != nil {
-					return err
-				}
-				for _, it := range items {
-					fmt.Println(it)
-				}
-				return nil
 			case listVersion:
-				if agent != "" && skillset != "" {
-					return fmt.Errorf("--agent and --skillset are mutually exclusive")
-				}
-				if skillset != "" {
-					if skillset == "__ALL__" {
-						return fmt.Errorf("--version with --skillset requires a skillset name")
-					}
-					versions, err := svc.ListSkillsetVersions(skillset)
-					if err != nil {
-						return err
-					}
-					for i := len(versions) - 1; i >= 0; i-- {
-						relative := len(versions) - 1 - i
-						v := versions[i]
-						fmt.Printf("version=%d snapshot=%s created=%s note=%s\n", relative, v.SnapshotID, time.Unix(v.CreatedAt, 0).Format(time.RFC3339), v.Note)
-					}
-					return nil
-				}
-				if agent == "" {
-					return fmt.Errorf("--version requires either --agent <name> or --skillset <name>")
-				}
-				versions, err := svc.ListAgentVersions(agent)
+				versions, err := svc.ListVersions()
 				if err != nil {
 					return err
 				}
-				for i := len(versions) - 1; i >= 0; i-- {
-					relative := len(versions) - 1 - i
-					v := versions[i]
-					fmt.Printf("version=%d snapshot=%s created=%s note=%s\n", relative, v.SnapshotID, time.Unix(v.CreatedAt, 0).Format(time.RFC3339), v.Note)
+				for _, v := range versions {
+					fmt.Println(v)
 				}
 				return nil
-			case agent == "__ALL__":
-				items, err := svc.ListAgents()
-				if err != nil {
-					return err
-				}
-				for _, it := range items {
-					fmt.Println(it)
-				}
-				return nil
-			case skill == "__ALL__":
-				if agent == "" {
-					return fmt.Errorf("--skill with --agent requires an agent name")
-				}
-				items, err := svc.ListSkillsByAgent(agent)
-				if err != nil {
-					return err
-				}
-				for _, it := range items {
-					fmt.Println(it)
-				}
-				return nil
-			case skillset == "__ALL__":
-				items, err := svc.ListSkillsets()
-				if err != nil {
-					return err
-				}
-				for _, it := range items {
-					fmt.Println(it)
-				}
-				return nil
-			default:
-				if cmd.Flags().Changed("skillset") {
-					if agent != "" {
-						return fmt.Errorf("--agent and --skillset are mutually exclusive")
-					}
-					items, err := svc.ListSkillsets()
-					if err != nil {
-						return err
-					}
-					for _, it := range items {
-						fmt.Println(it)
-					}
-					return nil
-				}
-				if agent != "" {
-					fmt.Println(agent)
-					return nil
-				}
-				agents, err := svc.ListAgents()
+			case listAgent:
+				agents, err := svc.ListCurrentVersionAgents()
 				if err != nil {
 					return err
 				}
@@ -121,20 +39,41 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 					fmt.Println(a)
 				}
 				return nil
+			case listSkill:
+				if agent != "" {
+					skills, err := svc.ListCurrentVersionSkillsByAgent(agent)
+					if err != nil {
+						return err
+					}
+					for _, sk := range skills {
+						fmt.Println(sk)
+					}
+					return nil
+				}
+				all, err := svc.ListAllSkillsInCurrentVersion()
+				if err != nil {
+					return err
+				}
+				agents := make([]string, 0, len(all))
+				for a := range all {
+					agents = append(agents, a)
+				}
+				sort.Strings(agents)
+				for _, a := range agents {
+					for _, sk := range all[a] {
+						fmt.Printf("%s:%s\n", a, sk)
+					}
+				}
+				return nil
+			default:
+				return fmt.Errorf("use one of: --version, --agent, or --skill")
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&agent, "agent", "", "Agent name")
-	cmd.Flags().Lookup("agent").NoOptDefVal = "__ALL__"
-
-	cmd.Flags().BoolVar(&listSkill, "skill", false, "List skills for the given agent")
-	cmd.Flags().Lookup("skill").NoOptDefVal = "__ALL__"
-
-	cmd.Flags().StringVar(&skillset, "skillset", "", "List skillsets, or provide a skillset name with --version")
-	cmd.Flags().Lookup("skillset").NoOptDefVal = "__ALL__"
-	
-	cmd.Flags().BoolVar(&listVersion, "version", false, "List versions for the given target")
-	// cmd.Flags().Lookup("version").NoOptDefVal = "__ALL__"
+	cmd.Flags().BoolVar(&listVersion, "version", false, "List version names")
+	cmd.Flags().BoolVar(&listAgent, "agent", false, "List all agents in current version")
+	cmd.Flags().BoolVar(&listSkill, "skill", false, "List skills in current version")
+	cmd.Flags().StringVar(&agent, "agent-name", "", "When used with --skill, list skills for one agent")
 	return cmd
 }

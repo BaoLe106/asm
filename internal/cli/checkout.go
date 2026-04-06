@@ -7,20 +7,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newDeleteVersionCmd(opts *rootOptions) *cobra.Command {
+func newCheckoutCmd(opts *rootOptions) *cobra.Command {
 	// var version string
 	cmd := &cobra.Command{
-		Use:   	"delete-version <version>",
-		Short: 	"Delete a version by name",
+		Use:	"checkout <version>",
+		Short: 	"Checkout to a specific version",
 		Args: 	cobra.ExactArgs(1),
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			version := args[0]
 			svc := app.NewService(opts.repoRoot)
-			if err := svc.DeleteVersion(version); err != nil {
+			if err := svc.CheckoutVersion(version); err != nil {
 				return err
 			}
-			fmt.Printf("Deleted version %q\n", version)
+			fmt.Printf("Checked out version %q\n", version)
 			return nil
 		},
 	}

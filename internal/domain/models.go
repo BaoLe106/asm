@@ -34,9 +34,17 @@ type VersionsFile struct {
 	Versions []VersionRef `json:"versions"`
 }
 
+type VersionManifest struct {
+	Name      string            `json:"name"`
+	CreatedAt int64             `json:"created_at"`
+	Note      string            `json:"note,omitempty"`
+	Agents    map[string]string `json:"agents"`
+}
+
 type CurrentState struct {
-	AgentName     string `json:"agent_name,omitempty"`
-	AgentSnapshot string `json:"agent_snapshot,omitempty"`
-	SkillsetName  string `json:"skillset_name,omitempty"`
-	SkillsetSnap  string `json:"skillset_snapshot,omitempty"`
+	CurrentVersion string `json:"current_version,omitempty"`
+	AgentName      string `json:"agent_name,omitempty"`
+	AgentSnapshot  string `json:"agent_snapshot,omitempty"`
+	SkillsetName   string `json:"skillset_name,omitempty"`
+	SkillsetSnap   string `json:"skillset_snapshot,omitempty"`
 }

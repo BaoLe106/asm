@@ -10,13 +10,13 @@ import (
 )
 
 func CreateHiddenFolder(folderPath string) error {
-    err := os.MkdirAll(folderPath, 0o755)
-    if err != nil {
-        return err
-    }
+	err := os.MkdirAll(folderPath, 0o755)
+	if err != nil {
+		return err
+	}
 
-    // Windows only
-    if runtime.GOOS == "windows" {
+	// Windows only
+	if runtime.GOOS == "windows" {
 		ptr, err := windows.UTF16PtrFromString(folderPath)
 		if err != nil {
 			return err
@@ -29,10 +29,10 @@ func CreateHiddenFolder(folderPath string) error {
 
 		// Add BOTH hidden + system
 		attrs |= windows.FILE_ATTRIBUTE_HIDDEN | windows.FILE_ATTRIBUTE_SYSTEM
-        windows.SetFileAttributes(ptr, attrs)
-    }
+		windows.SetFileAttributes(ptr, attrs)
+	}
 
-    return nil
+	return nil
 }
 
 func EnsureDir(path string) error {
